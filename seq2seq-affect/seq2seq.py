@@ -23,7 +23,7 @@ parser.add_argument('--log_per_step', dest='log_per_step', default=30000, type=i
 parser.add_argument('--log_path', dest='log_path', default='log', type=str, help='记录模型位置')
 parser.add_argument('--inference', dest='inference', default=True, type=bool, help='是否测试')  #
 parser.add_argument('--max_len', dest='max_len', default=60, type=int, help='测试时最大解码步数')
-parser.add_argument('--model_path', dest='model_path', default='log/run1572626863/025000001383024.model', type=str, help='载入模型位置')  #
+parser.add_argument('--model_path', dest='model_path', default='log//', type=str, help='载入模型位置')  #
 parser.add_argument('--seed', dest='seed', default=666, type=int, help='随机种子')  #
 parser.add_argument('--gpu', dest='gpu', default=True, type=bool, help='是否使用gpu')  #
 parser.add_argument('--max_epoch', dest='max_epoch', default=40, type=int, help='最大训练epoch')
@@ -81,6 +81,7 @@ def main():
     # 载入模型
     if os.path.isfile(args.model_path):  # 如果载入模型的位置存在则载入模型
         epoch, global_step = model.load_model(args.model_path)
+        model.affect_embedding.embedding.weight.requires_grad = False
         print('载入模型完成')
         # 记录模型的文件夹
         log_dir = os.path.split(args.model_path)[0]
@@ -89,6 +90,7 @@ def main():
         return
     else:  # 如果载入模型的位置不存在，重新开始训练，则载入预训练的词向量
         model.embedding.embedding.weight = torch.nn.Parameter(torch.FloatTensor(embeds))
+        model.affect_embedding.embedding.weight.requires_grad = False
         print('初始化模型完成')
         # 记录模型的文件夹
         log_dir = os.path.join(args.log_path, 'run' + str(int(time.time())))
@@ -198,7 +200,7 @@ def main():
             results = test(model, feed_data)  # 使用模型计算结果 [batch, len_decoder]
 
             for idx, result in enumerate(results):
-                new_data = {}
+                new_data = dict()
                 new_data['post'] = posts[idx]
                 new_data['response'] = responses[idx]
                 new_data['result'] = sentence_processor.index2word(result)  # 将输出的句子转回单词的形式

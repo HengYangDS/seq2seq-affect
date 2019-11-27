@@ -15,12 +15,17 @@ class Config(object):
     num_vocab = 39000
 
     # 嵌入层参数，如果载入预训练的词向量，就由词向量的维度决定
+    affect_embedding_size = 3
     embedding_size = 300
+
+    affect_encoder_output_size = 100
 
     # 编码器解码器层数/输出大小
     encoder_decoder_cell_type = 'LSTM'  # in ['GRU', 'LSTM']
     encoder_decoder_num_layers = 2
     encoder_decoder_output_size = 300
+
+    decoder_input_size = 300
 
     # 编码器参数
     encoder_bidirectional = True  # 是否是双向rnn
