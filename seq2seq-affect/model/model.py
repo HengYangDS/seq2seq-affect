@@ -81,15 +81,16 @@ class Model(nn.Module):
             _, state_encoder = self.encoder(embed_posts.transpose(0, 1), len_posts)
             # output_affect: [seq, batch, dim]
             output_affect, state_affect_encoder = self.affect_encoder(affect_posts.transpose(0, 1), len_posts)
+            context_affect = output_affect[-1, :, :].unsqueeze(0)  # [1, batch, dim]
 
             outputs = []
 
             for idx in range(len_decoder):
-
                 if idx == 0:
                     state = self.linear_prepare_state(torch.cat([state_encoder, state_affect_encoder], 2))  # 解码器初始状态
 
-                input = decoder_input[idx]  # 当前时间步输入 [1, batch, embed_size]
+                input = torch.cat([decoder_input[idx], context_affect], 2)  # 当前时间步输入 [1, batch, embed_size]
+                input = self.linear_prepare_input(input)
 
                 # output: [1, batch, dim_out]
                 # state: [num_layer, batch, dim_out]
@@ -111,9 +112,12 @@ class Model(nn.Module):
             device = id_posts.device.type
 
             embed_posts = self.embedding(id_posts)  # [batch, seq, embed_size]
+            affect_posts = self.affect_embedding(id_posts)
 
             # state: [layers, batch, dim]
             _, state_encoder = self.encoder(embed_posts.transpose(0, 1), len_posts)
+            output_affect, state_affect_encoder = self.affect_encoder(affect_posts.transpose(0, 1), len_posts)
+            context_affect = output_affect[-1, :, :].unsqueeze(0)  # [1, batch, dim]
 
             outputs = []
 
@@ -126,8 +130,11 @@ class Model(nn.Module):
             for idx in range(max_len):
 
                 if idx == 0:  # 第一个时间步
-                    state = state_encoder  # 解码器初始状态
+                    state = self.linear_prepare_state(torch.cat([state_encoder, state_affect_encoder], 2))  # 解码器初始状态
                     input = self.embedding(first_input_id)  # 解码器初始输入 [1, batch, embed_size]
+
+                input = torch.cat([input, context_affect], 2)
+                input = self.linear_prepare_input(input)
 
                 # output: [1, batch, dim_out]
                 # state: [num_layers, batch, dim_out]
@@ -142,15 +149,11 @@ class Model(nn.Module):
                 done = done | _done  # 所有完成解码的
 
                 if done.sum() == batch_size:  # 如果全部解码完成则提前停止
-
                     break
-
                 else:
-
                     input = self.embedding(next_input_id)  # [1, batch, embed_size]
 
             outputs = torch.cat(outputs, 0).transpose(0, 1)  # [batch, seq, dim_out]
-
             output_vocab = self.projector(outputs)  # [batch, seq, num_vocab]
 
             return output_vocab
@@ -171,6 +174,8 @@ class Model(nn.Module):
 
         print("嵌入层参数个数: %d" % statistic_param(self.embedding.parameters()))
         print("编码器参数个数: %d" % statistic_param(self.encoder.parameters()))
+        print("准备状态参数个数: %d" % statistic_param(self.linear_prepare_state.parameters()))
+        print("准备输入参数个数: %d" % statistic_param(self.linear_prepare_input.parameters()))
         print("解码器参数个数: %d" % statistic_param(self.decoder.parameters()))
         print("输出层参数个数: %d" % statistic_param(self.projector.parameters()))
         print("参数总数: %d" % statistic_param(self.parameters()))
@@ -178,10 +183,13 @@ class Model(nn.Module):
     # 保存模型
     def save_model(self, epoch, global_step, path):
 
-        torch.save({'embedding': self.embedding.state_dict(),
+        torch.save({'affect_embedding': self.affect_embedding.state_dict(),
+                    'embedding': self.embedding.state_dict(),
                     'encoder': self.encoder.state_dict(),
-                    'decoder': self.decoder.state_dict(),
+                    'linear_prepare_state': self.linear_prepare_state.state_dict(),
+                    'linear_prepare_input': self.linear_prepare_input.state_dict(),
                     'projector': self.projector.state_dict(),
+                    'decoder': self.decoder.state_dict(),
                     'epoch': epoch,
                     'global_step': global_step}, path)
 
@@ -189,8 +197,11 @@ class Model(nn.Module):
     def load_model(self, path):
 
         checkpoint = torch.load(path)
+        self.affect_embedding.load_state_dict(checkpoint['embedding'])
         self.embedding.load_state_dict(checkpoint['embedding'])
         self.encoder.load_state_dict(checkpoint['encoder'])
+        self.linear_prepare_state.load_state_dict(checkpoint['linear_prepare_state'])
+        self.linear_prepare_input.load_state_dict(checkpoint['linear_prepare_input'])
         self.decoder.load_state_dict(checkpoint['decoder'])
         self.projector.load_state_dict(checkpoint['projector'])
         epoch = checkpoint['epoch']
