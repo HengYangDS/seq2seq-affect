@@ -39,18 +39,18 @@ class Model(nn.Module):
                                config.encoder_bidirectional,  # 是否双向
                                config.dropout)  # dropout概率
 
+        self.linear_prepare_state = nn.Linear(config.encoder_decoder_output_size + config.affect_encoder_output_size,
+                                              config.encoder_decoder_output_size)
+
+        self.linear_prepare_input = nn.Linear(config.embedding_size + config.affect_encoder_output_size,
+                                              config.decoder_input_size)
+
         # 解码器
         self.decoder = Decoder(config.encoder_decoder_cell_type,  # rnn类型
                                config.decoder_input_size,  # 输入维度
                                config.encoder_decoder_output_size,  # 输出维度
                                config.encoder_decoder_num_layers,  # rnn层数
                                config.dropout)  # dropout概率
-
-        self.linear_prepare_state = nn.Linear(config.encoder_decoder_output_size+config.affect_encoder_output_size,
-                                              config.encoder_decoder_output_size)
-
-        self.linear_prepare_input = nn.Linear(config.embedding_size+config.affect_encoder_output_size,
-                                              config.decoder_input_size)
 
         # 输出层
         self.projector = nn.Sequential(
