@@ -249,7 +249,8 @@ def prepare_feed_data(data, inference=False):
 def comput_loss(outputs, labels, masks):
 
     # output_vocab: [batch, len_decoder, num_vocab] 对每个单词的softmax概率
-    output_vocab = outputs
+    output_vocab, output_affect = outputs
+    labels_word, labels_affect = labels
 
     token_per_batch = masks.sum(1)  # 每个样本要计算损失的token数 [batch]
     len_decoder = masks.size()[1]  # 解码长度
@@ -257,45 +258,79 @@ def comput_loss(outputs, labels, masks):
     output_vocab = output_vocab.reshape(-1, config.num_vocab)  # [batch*len_decoder, num_vocab]
 
     # nll_loss需要自己求log，它只是把label指定下标的损失取负并拿出来，reduction='none'代表只是拿出来，而不需要求和或者求均值 [batch*len_decoder]
-    _nll_loss = F.nll_loss(output_vocab.clamp_min(1e-12).log(), labels.reshape(-1), reduction='none')
+    _nll_loss = F.nll_loss(output_vocab.clamp_min(1e-12).log(), labels_word.reshape(-1), reduction='none')
     _nll_loss = _nll_loss * masks.reshape(-1)  # 忽略掉不需要计算损失的token [batch*len_decoder]
 
     nll_loss = _nll_loss.reshape(-1, len_decoder).sum(1)  # 每个batch的nll损失 [batch]
 
     ppl = nll_loss / token_per_batch.clamp_min(1e-12)  # ppl的计算需要平均到每个有效的token上 [batch]
 
-    return nll_loss, ppl
+    post_affect = labels_affect.sum(1)  # [batch, 3]
+    post_affect_v = post_affect[:, 0]  # batch
+    post_affect_a = post_affect[:, 1]
+    post_affect_d = post_affect[:, 2]
+
+    result_affect = output_affect.sum(1)  # [batch, 3]
+    result_affect_v = result_affect[:, 0]
+    result_affect_a = result_affect[:, 1]
+    result_affect_d = result_affect[:, 2]
+
+    reward_v = 1 / (1 + ((post_affect_v - result_affect_v) ** 2).sqrt())  # [0, 1]
+    reward_a = ((post_affect_a - result_affect_a) ** 2).sqrt()
+    reward_a = (reward_a-reward_a.min()) / (reward_a.max()-reward_a.min())
+    reward_d = ((post_affect_d - result_affect_d) ** 2).sqrt()
+    reward_d = (reward_d-reward_d.min()) / (reward_d.max() - reward_d.min())
+
+    reward = reward_v + reward_a + reward_d  # [batch]
+    baseline_reward = reward.mean()
+    reward = reward - baseline_reward
+
+    rl_loss = -nll_loss*reward
+
+    return rl_loss, nll_loss, reward, ppl
 
 
 def train(model, feed_data):
-    output_vocab = model(feed_data)  # 前向传播
-    labels = feed_data['responses'][:, 1:]  # 去掉start_id
+    output_vocab, weights = model(feed_data)  # 前向传播
+    output_affect = model.affect_embedding(output_vocab.argmax(2))
+    outputs = (output_vocab, output_affect)
+    labels_word = feed_data['responses'][:, 1:]  # 去掉start_id
+    labels_affect = model.affect_embedding(feed_data['posts'][:, 1:])
+    labels = (labels_word, labels_affect)
     masks = feed_data['masks']
-    nll_loss, ppl = comput_loss(output_vocab, labels, masks)  # 计算损失
-    return nll_loss, ppl
+    rl_loss, nll_loss, reward, ppl = comput_loss(outputs, labels, masks)  # 计算损失
+    return rl_loss, nll_loss, reward, ppl
 
 
 def valid(model, data_processor):
 
-    nll_losses, ppls = [], []
+    rl_losses, nll_losses, rewards, ppls = [], [], [], []
 
     for data in data_processor.get_batch_data():
 
         feed_data = prepare_feed_data(data)
-        output_vocab = model(feed_data)
+        output_vocab, weights = model(feed_data)  # 前向传播
+        output_affect = model.affect_embedding(output_vocab.argmax(2))
+        outputs = (output_vocab, output_affect)
 
-        labels = feed_data['responses'][:, 1:]  # 去掉start_id
+        labels_word = feed_data['responses'][:, 1:]  # 去掉start_id
+        labels_affect = model.affect_embedding(feed_data['posts'][:, 1:])
+        labels = (labels_word, labels_affect)
         masks = feed_data['masks']
 
-        nll_loss, ppl = comput_loss(output_vocab, labels, masks)
+        rl_loss, nll_loss, reward, ppl = comput_loss(outputs, labels, masks)
 
+        rl_losses.extend(rl_loss.cpu().detach().numpy().tolist())
         nll_losses.extend(nll_loss.cpu().detach().numpy().tolist())
+        rewards.extend(reward.cpu().detach().numpy().tolist())
         ppls.extend(ppl.cpu().detach().numpy().tolist())
 
+    rl_losses = np.array(rl_losses)
     nll_losses = np.array(nll_losses)
+    rewards = np.array(rewards)
     ppls = np.array(ppls)
 
-    return nll_losses.mean(), ppls.mean()
+    return rl_losses.mean(), nll_losses.mean(), rewards.mean(), ppls.mean()
 
 
 def test(model, feed_data):

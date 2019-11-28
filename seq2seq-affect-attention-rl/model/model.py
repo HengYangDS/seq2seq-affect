@@ -203,6 +203,7 @@ class Model(nn.Module):
         print("编码器参数个数: %d" % statistic_param(self.encoder.parameters()))
         print("准备状态参数个数: %d" % statistic_param(self.linear_prepare_state.parameters()))
         print("准备输入参数个数: %d" % statistic_param(self.linear_prepare_input.parameters()))
+        print("注意力参数个数: %d" % statistic_param(self.attention.parameters()))
         print("解码器参数个数: %d" % statistic_param(self.decoder.parameters()))
         print("输出层参数个数: %d" % statistic_param(self.projector.parameters()))
         print("参数总数: %d" % statistic_param(self.parameters()))
@@ -215,6 +216,7 @@ class Model(nn.Module):
                     'encoder': self.encoder.state_dict(),
                     'linear_prepare_state': self.linear_prepare_state.state_dict(),
                     'linear_prepare_input': self.linear_prepare_input.state_dict(),
+                    'attention': self.attention.state_dict(),
                     'projector': self.projector.state_dict(),
                     'decoder': self.decoder.state_dict(),
                     'epoch': epoch,
@@ -229,6 +231,7 @@ class Model(nn.Module):
         self.encoder.load_state_dict(checkpoint['encoder'])
         self.linear_prepare_state.load_state_dict(checkpoint['linear_prepare_state'])
         self.linear_prepare_input.load_state_dict(checkpoint['linear_prepare_input'])
+        self.attention.load_state_dict(checkpoint['attention'])
         self.decoder.load_state_dict(checkpoint['decoder'])
         self.projector.load_state_dict(checkpoint['projector'])
         epoch = checkpoint['epoch']
