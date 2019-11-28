@@ -40,6 +40,11 @@ class Model(nn.Module):
                                config.encoder_bidirectional,  # 是否双向
                                config.dropout)  # dropout概率
 
+        self.attention = Attention(config.encoder_decoder_output_size,
+                                   config.affect_encoder_output_size,
+                                   config.attention_type,
+                                   config.attention_size)
+
         self.linear_prepare_state = nn.Linear(config.encoder_decoder_output_size+config.affect_encoder_output_size,
                                               config.encoder_decoder_output_size)
 
@@ -68,6 +73,8 @@ class Model(nn.Module):
             id_posts = input['posts']  # [batch, seq]
             len_posts = input['len_posts']  # [batch]
             id_responses = input['responses']  # [batch, seq]
+            batch_size = id_posts.size()[0]
+            device = id_posts.device.type
 
             embed_posts = self.embedding(id_posts)  # [batch, seq, embed_size]
             embed_responses = self.embedding(id_responses)  # [batch, seq, embed_size]
@@ -85,25 +92,36 @@ class Model(nn.Module):
             context_affect = output_affect[-1, :, :].unsqueeze(0)  # [1, batch, dim]
 
             outputs = []
+            weights = []
+
+            init_attn = torch.zeros([1, batch_size, self.config.attention_size])
+            if device == 'cuda':
+                init_attn = init_attn.cuda()
 
             for idx in range(len_decoder):
                 if idx == 0:
                     state = self.linear_prepare_state(torch.cat([state_encoder, state_affect_encoder], 2))  # 解码器初始状态
+                    input = torch.cat([decoder_input[idx], context_affect, init_attn], 2)  # 当前时间步输入 [1, batch, embed_size]
+                else:
+                    input = torch.cat([decoder_input[idx], context_affect, attn.transpose(0, 1)], 2)  # 当前时间步输入 [1, batch, embed_size]
 
-                input = torch.cat([decoder_input[idx], context_affect], 2)  # 当前时间步输入 [1, batch, embed_size]
                 input = self.linear_prepare_input(input)
 
                 # output: [1, batch, dim_out]
                 # state: [num_layer, batch, dim_out]
                 output, state = self.decoder(input, state)
-
-                outputs.append(output)
+                # attn: [batch, 1, attention_size]
+                # weights: [batch, 1, encoder_len]
+                attn, weight = self.attention(output.transpose(0, 1))
+                outputs.append(torch.cat([output, attn.transpose(0, 1)], 2))
+                weights.append(weight)
 
             outputs = torch.cat(outputs, 0).transpose(0, 1)  # [batch, seq-1, dim_out]
+            weights = torch.cat(weights, 1)  # [batch, seq-1, dim_out]
 
             output_vocab = self.projector(outputs)  # [batch, seq-1, num_vocab]
 
-            return output_vocab
+            return output_vocab, weights
 
         else:  # 测试
 
@@ -121,29 +139,36 @@ class Model(nn.Module):
             context_affect = output_affect[-1, :, :].unsqueeze(0)  # [1, batch, dim]
 
             outputs = []
+            weights = []
 
             done = torch.BoolTensor([0] * batch_size)
             first_input_id = (torch.ones((1, batch_size)) * self.config.start_id).long()
+            init_attn = torch.zeros([1, batch_size, self.config.attention_size])
             if device == 'cuda':
                 done = done.cuda()
                 first_input_id = first_input_id.cuda()
+                init_attn = init_attn.cuda()
 
             for idx in range(max_len):
 
                 if idx == 0:  # 第一个时间步
                     state = self.linear_prepare_state(torch.cat([state_encoder, state_affect_encoder], 2))  # 解码器初始状态
-                    input = self.embedding(first_input_id)  # 解码器初始输入 [1, batch, embed_size]
+                    input = torch.cat([self.embedding(first_input_id), context_affect, init_attn], 2)  # 解码器初始输入 [1, batch, embed_size]
+                else:
+                    input = torch.cat([input, context_affect, attn.transpose(0, 1)], 2)
 
-                input = torch.cat([input, context_affect], 2)
                 input = self.linear_prepare_input(input)
 
                 # output: [1, batch, dim_out]
                 # state: [num_layers, batch, dim_out]
                 output, state = self.decoder(input, state)
+                # attn: [batch, 1, attention_size]
+                # weights: [batch, 1, encoder_len]
+                attn, weight = self.attention(output.transpose(0, 1))
+                outputs.append(torch.cat([output, attn.transpose(0, 1)], 2))
+                weights.append(weight)
 
-                outputs.append(output)
-
-                vocab_prob = self.projector(output)  # [1, batch, num_vocab]
+                vocab_prob = self.projector(torch.cat([output, attn.transpose(0, 1)], 2))  # [1, batch, num_vocab]
                 next_input_id = torch.argmax(vocab_prob, 2)  # 选择概率最大的词作为下个时间步的输入 [1, batch]
 
                 _done = next_input_id.squeeze(0) == self.config.end_id  # 当前时间步完成解码的 [batch]
@@ -155,9 +180,10 @@ class Model(nn.Module):
                     input = self.embedding(next_input_id)  # [1, batch, embed_size]
 
             outputs = torch.cat(outputs, 0).transpose(0, 1)  # [batch, seq, dim_out]
+            weights = torch.cat(weights, 1)
             output_vocab = self.projector(outputs)  # [batch, seq, num_vocab]
 
-            return output_vocab
+            return output_vocab, weights
 
     # 统计参数
     def print_parameters(self):
