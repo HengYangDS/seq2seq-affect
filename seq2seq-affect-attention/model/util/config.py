@@ -30,6 +30,9 @@ class Config(object):
     # 编码器参数
     encoder_bidirectional = True  # 是否是双向rnn
 
+    attention_type = 'dot'  # in ['dot', 'general', 'concat', 'perceptron']
+    attention_size = 100
+
     # 优化参数
     batch_size = 64
     method = 'adam'  # in ['sgd', 'adam']
