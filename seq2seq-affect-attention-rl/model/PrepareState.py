@@ -9,10 +9,9 @@ class PrepareState(nn.Module):
         super(PrepareState, self).__init__()
         assert cell_type in ['GRU', 'LSTM']
 
+        self.linear_h = nn.Linear(input_size, output_size)
         if cell_type == 'LSTM':
             self.linear_c = nn.Linear(input_size, output_size)
-        else:
-            self.linear_h = nn.Linear(input_size, output_size)
 
         self.cell_type = cell_type
 
