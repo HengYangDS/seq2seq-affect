@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch
 
 
-class PrepareState(object):
+class PrepareState(nn.Module):
     def __init__(self, cell_type,  # 编解码器rnn类型
                  input_size,  # 输入状态的维度
                  output_size):  # 输出状态的维度
