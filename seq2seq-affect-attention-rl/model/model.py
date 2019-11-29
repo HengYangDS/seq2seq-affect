@@ -62,7 +62,7 @@ class Model(nn.Module):
 
         # 输出层
         self.projector = nn.Sequential(
-            nn.Linear(config.encoder_decoder_output_size, config.num_vocab),
+            nn.Linear(config.encoder_decoder_output_size+config.attention_size, config.num_vocab),
             nn.Softmax(-1)
         )
 

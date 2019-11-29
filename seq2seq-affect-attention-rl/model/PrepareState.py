@@ -21,7 +21,7 @@ class PrepareState(nn.Module):
             state_ah, state_ac = state_affect
             state_h = self.linear_h(torch.cat([state_eh, state_ah], 2))
             state_c = self.linear_c(torch.cat([state_ec, state_ac], 2))
-            return tuple(state_h, state_c)
+            return (state_h, state_c)
         else:
             state_h = self.linear_h(torch.cat([state_encoder, state_affect], 2))
             return state_h
