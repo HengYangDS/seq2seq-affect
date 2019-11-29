@@ -174,6 +174,7 @@ class Model(nn.Module):
 
         print("嵌入层参数个数: %d" % statistic_param(self.embedding.parameters()))
         print("编码器参数个数: %d" % statistic_param(self.encoder.parameters()))
+        print("情感编码器参数个数: %d" % statistic_param(self.affect_encoder.parameters()))
         print("准备状态参数个数: %d" % statistic_param(self.linear_prepare_state.parameters()))
         print("准备输入参数个数: %d" % statistic_param(self.linear_prepare_input.parameters()))
         print("解码器参数个数: %d" % statistic_param(self.decoder.parameters()))
@@ -186,6 +187,7 @@ class Model(nn.Module):
         torch.save({'affect_embedding': self.affect_embedding.state_dict(),
                     'embedding': self.embedding.state_dict(),
                     'encoder': self.encoder.state_dict(),
+                    'affect_encoder': self.affect_encoder.state_dict(),
                     'linear_prepare_state': self.linear_prepare_state.state_dict(),
                     'linear_prepare_input': self.linear_prepare_input.state_dict(),
                     'projector': self.projector.state_dict(),
@@ -200,6 +202,7 @@ class Model(nn.Module):
         self.affect_embedding.load_state_dict(checkpoint['embedding'])
         self.embedding.load_state_dict(checkpoint['embedding'])
         self.encoder.load_state_dict(checkpoint['encoder'])
+        self.affect_encoder.load_state_dict(checkpoint['affect_encoder'])
         self.linear_prepare_state.load_state_dict(checkpoint['linear_prepare_state'])
         self.linear_prepare_input.load_state_dict(checkpoint['linear_prepare_input'])
         self.decoder.load_state_dict(checkpoint['decoder'])

@@ -124,10 +124,10 @@ def main():
                 start_time = time.time()
 
                 feed_data = prepare_feed_data(data)
-                nll_loss, ppl = train(model, feed_data)
+                rl_loss, nll_loss, reward, ppl = train(model, feed_data)
 
                 optim.optimizer.zero_grad()  # 清空梯度
-                nll_loss.mean().backward()  # 反向传播
+                rl_loss.mean().backward()  # 反向传播
                 optim.step()  # 更新参数
 
                 use_time = time.time() - start_time
@@ -136,9 +136,13 @@ def main():
 
                 # summary当前情况
                 if global_step % args.print_per_step == 0:
-                    print('epoch: %d, global_step: %d, lr: %g, nll_loss: %.2f, ppl: %.2f, time: %.2fs'
-                          % (epoch, global_step, optim.lr, nll_loss.mean().item(), ppl.mean().exp().item(), use_time))
+                    print('epoch: %d, global_step: %d, lr: %g, rl_loss:%.2f, nll_loss: %.2f, reward: %.2f, ppl: %.2f,'
+                          ' time: %.2fs'
+                          % (epoch, global_step, optim.lr, rl_loss.mean().item(), nll_loss.mean().item(),
+                             reward.mean().item(), ppl.mean().exp().item(), use_time))
+                    summary_writer.add_scalar('train_rl', rl_loss.mean().item(), global_step)
                     summary_writer.add_scalar('train_nll', nll_loss.mean().item(), global_step)
+                    summary_writer.add_scalar('train_reward', reward.mean().item(), global_step)
                     summary_writer.add_scalar('train_ppl', ppl.mean().exp().item(), global_step)
                     summary_writer.flush()  # 将缓冲区写入文件
 
@@ -149,11 +153,13 @@ def main():
 
                     # 验证集上计算困惑度
                     model.eval()
-                    nll_loss, ppl = valid(model, dp_valid)
+                    rl_loss, nll_loss, reward, ppl = valid(model, dp_valid)
                     model.train()
-                    print('在验证集上的nll损失为: %g, 困惑度为: %g' % (
-                        nll_loss, np.exp(ppl)))
+                    print('在验证集上的rl损失为: %g, nll损失为: %g, 奖励为: %g, 困惑度为: %g'
+                          % (rl_loss, nll_loss, reward, np.exp(ppl)))
+                    summary_writer.add_scalar('valid_rl', rl_loss, global_step)
                     summary_writer.add_scalar('valid_nll', nll_loss, global_step)
+                    summary_writer.add_scalar('valid_reward', reward, global_step)
                     summary_writer.add_scalar('valid_ppl', np.exp(ppl), global_step)
                     summary_writer.flush()  # 将缓冲区写入文件
 
@@ -166,9 +172,12 @@ def main():
 
             # 验证集上计算困惑度
             model.eval()
-            nll_loss, ppl = valid(model, dp_valid)
-            print('在验证集上的nll损失为: %g, 困惑度为: %g' % (nll_loss, np.exp(ppl)))
+            rl_loss, nll_loss, reward, ppl = valid(model, dp_valid)
+            print('在验证集上的rl损失为: %g, nll损失为: %g, 奖励为: %g, 困惑度为: %g'
+                  % (rl_loss, nll_loss, reward, np.exp(ppl)))
+            summary_writer.add_scalar('valid_rl', rl_loss, global_step)
             summary_writer.add_scalar('valid_nll', nll_loss, global_step)
+            summary_writer.add_scalar('valid_reward', reward, global_step)
             summary_writer.add_scalar('valid_ppl', np.exp(ppl), global_step)
             summary_writer.flush()  # 将缓冲区写入文件
 
@@ -186,8 +195,9 @@ def main():
 
         model.eval()  # 切换到测试模式，会停用dropout等等
 
-        nll_loss, ppl = valid(model, dp_test)  # 评估困惑度
-        print('在测试集上的nll损失为: %g, 困惑度为: %g' % (nll_loss, np.exp(ppl)))
+        rl_loss, nll_loss, reward, ppl = valid(model, dp_test)
+        print('在验证集上的rl损失为: %g, nll损失为: %g, 奖励为: %g, 困惑度为: %g'
+              % (rl_loss, nll_loss, reward, np.exp(ppl)))
 
         len_results = []  # 统计生成结果的总长度
 
@@ -334,7 +344,7 @@ def valid(model, data_processor):
 
 
 def test(model, feed_data):
-    output_vocab = model(feed_data, inference=True, max_len=args.max_len)
+    output_vocab, _ = model(feed_data, inference=True, max_len=args.max_len)
     return output_vocab.argmax(2).cpu().detach().numpy().tolist()
 
 

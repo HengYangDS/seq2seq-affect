@@ -268,7 +268,7 @@ def comput_loss(outputs, labels, masks):
 
 
 def train(model, feed_data):
-    output_vocab = model(feed_data)  # 前向传播
+    output_vocab, weights = model(feed_data)  # 前向传播
     labels = feed_data['responses'][:, 1:]  # 去掉start_id
     masks = feed_data['masks']
     nll_loss, ppl = comput_loss(output_vocab, labels, masks)  # 计算损失
@@ -282,7 +282,7 @@ def valid(model, data_processor):
     for data in data_processor.get_batch_data():
 
         feed_data = prepare_feed_data(data)
-        output_vocab = model(feed_data)
+        output_vocab, weights = model(feed_data)
 
         labels = feed_data['responses'][:, 1:]  # 去掉start_id
         masks = feed_data['masks']

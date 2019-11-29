@@ -101,9 +101,9 @@ class Model(nn.Module):
             for idx in range(len_decoder):
                 if idx == 0:
                     state = self.linear_prepare_state(torch.cat([state_encoder, state_affect_encoder], 2))  # 解码器初始状态
-                    input = torch.cat([decoder_input[idx], context_affect, init_attn], 2)  # 当前时间步输入 [1, batch, embed_size]
+                    input = torch.cat([decoder_input[idx], context_affect, init_attn], 2)  #
                 else:
-                    input = torch.cat([decoder_input[idx], context_affect, attn.transpose(0, 1)], 2)  # 当前时间步输入 [1, batch, embed_size]
+                    input = torch.cat([decoder_input[idx], context_affect, attn.transpose(0, 1)], 2)  #
 
                 input = self.linear_prepare_input(input)
 
@@ -112,7 +112,7 @@ class Model(nn.Module):
                 output, state = self.decoder(input, state)
                 # attn: [batch, 1, attention_size]
                 # weights: [batch, 1, encoder_len]
-                attn, weight = self.attention(output.transpose(0, 1))
+                attn, weight = self.attention(output.transpose(0, 1), output_affect.transpose(0, 1))
                 outputs.append(torch.cat([output, attn.transpose(0, 1)], 2))
                 weights.append(weight)
 
@@ -164,7 +164,7 @@ class Model(nn.Module):
                 output, state = self.decoder(input, state)
                 # attn: [batch, 1, attention_size]
                 # weights: [batch, 1, encoder_len]
-                attn, weight = self.attention(output.transpose(0, 1))
+                attn, weight = self.attention(output.transpose(0, 1), output_affect.transpose(0, 1))
                 outputs.append(torch.cat([output, attn.transpose(0, 1)], 2))
                 weights.append(weight)
 
@@ -201,6 +201,7 @@ class Model(nn.Module):
 
         print("嵌入层参数个数: %d" % statistic_param(self.embedding.parameters()))
         print("编码器参数个数: %d" % statistic_param(self.encoder.parameters()))
+        print("情感编码器参数个数: %d" % statistic_param(self.affect_encoder.parameters()))
         print("准备状态参数个数: %d" % statistic_param(self.linear_prepare_state.parameters()))
         print("准备输入参数个数: %d" % statistic_param(self.linear_prepare_input.parameters()))
         print("注意力参数个数: %d" % statistic_param(self.attention.parameters()))
@@ -214,6 +215,7 @@ class Model(nn.Module):
         torch.save({'affect_embedding': self.affect_embedding.state_dict(),
                     'embedding': self.embedding.state_dict(),
                     'encoder': self.encoder.state_dict(),
+                    'affect_encoder': self.affect_encoder.state_dict(),
                     'linear_prepare_state': self.linear_prepare_state.state_dict(),
                     'linear_prepare_input': self.linear_prepare_input.state_dict(),
                     'attention': self.attention.state_dict(),
@@ -229,6 +231,7 @@ class Model(nn.Module):
         self.affect_embedding.load_state_dict(checkpoint['embedding'])
         self.embedding.load_state_dict(checkpoint['embedding'])
         self.encoder.load_state_dict(checkpoint['encoder'])
+        self.affect_encoder.load_state_dict(checkpoint['affect_encoder'])
         self.linear_prepare_state.load_state_dict(checkpoint['linear_prepare_state'])
         self.linear_prepare_input.load_state_dict(checkpoint['linear_prepare_input'])
         self.attention.load_state_dict(checkpoint['attention'])
