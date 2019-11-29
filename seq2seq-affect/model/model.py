@@ -4,6 +4,7 @@ from Embedding import WordEmbedding
 from Encoder import Encoder
 from Decoder import Decoder
 from AffectEmbedding import AffectEmbedding
+from PrepareState import PrepareState
 
 
 class Model(nn.Module):
@@ -39,8 +40,9 @@ class Model(nn.Module):
                                config.encoder_bidirectional,  # 是否双向
                                config.dropout)  # dropout概率
 
-        self.linear_prepare_state = nn.Linear(config.encoder_decoder_output_size + config.affect_encoder_output_size,
-                                              config.encoder_decoder_output_size)
+        self.prepare_state = PrepareState(config.encoder_decoder_cell_type,
+                                          config.encoder_decoder_output_size + config.affect_encoder_output_size,
+                                          config.encoder_decoder_output_size)
 
         self.linear_prepare_input = nn.Linear(config.embedding_size + config.affect_encoder_output_size,
                                               config.decoder_input_size)
@@ -87,7 +89,7 @@ class Model(nn.Module):
 
             for idx in range(len_decoder):
                 if idx == 0:
-                    state = self.linear_prepare_state(torch.cat([state_encoder, state_affect_encoder], 2))  # 解码器初始状态
+                    state = self.prepare_state(state_encoder, state_affect_encoder)  # 解码器初始状态
 
                 input = torch.cat([decoder_input[idx], context_affect], 2)  # 当前时间步输入 [1, batch, embed_size]
                 input = self.linear_prepare_input(input)
@@ -130,7 +132,7 @@ class Model(nn.Module):
             for idx in range(max_len):
 
                 if idx == 0:  # 第一个时间步
-                    state = self.linear_prepare_state(torch.cat([state_encoder, state_affect_encoder], 2))  # 解码器初始状态
+                    state = self.prepare_state(state_encoder, state_affect_encoder)  # 解码器初始状态
                     input = self.embedding(first_input_id)  # 解码器初始输入 [1, batch, embed_size]
 
                 input = torch.cat([input, context_affect], 2)
@@ -175,7 +177,7 @@ class Model(nn.Module):
         print("嵌入层参数个数: %d" % statistic_param(self.embedding.parameters()))
         print("编码器参数个数: %d" % statistic_param(self.encoder.parameters()))
         print("情感编码器参数个数: %d" % statistic_param(self.affect_encoder.parameters()))
-        print("准备状态参数个数: %d" % statistic_param(self.linear_prepare_state.parameters()))
+        print("准备状态参数个数: %d" % statistic_param(self.prepare_state.parameters()))
         print("准备输入参数个数: %d" % statistic_param(self.linear_prepare_input.parameters()))
         print("解码器参数个数: %d" % statistic_param(self.decoder.parameters()))
         print("输出层参数个数: %d" % statistic_param(self.projector.parameters()))
@@ -188,7 +190,7 @@ class Model(nn.Module):
                     'embedding': self.embedding.state_dict(),
                     'encoder': self.encoder.state_dict(),
                     'affect_encoder': self.affect_encoder.state_dict(),
-                    'linear_prepare_state': self.linear_prepare_state.state_dict(),
+                    'prepare_state': self.prepare_state.state_dict(),
                     'linear_prepare_input': self.linear_prepare_input.state_dict(),
                     'projector': self.projector.state_dict(),
                     'decoder': self.decoder.state_dict(),
@@ -203,7 +205,7 @@ class Model(nn.Module):
         self.embedding.load_state_dict(checkpoint['embedding'])
         self.encoder.load_state_dict(checkpoint['encoder'])
         self.affect_encoder.load_state_dict(checkpoint['affect_encoder'])
-        self.linear_prepare_state.load_state_dict(checkpoint['linear_prepare_state'])
+        self.prepare_state.load_state_dict(checkpoint['prepare_state'])
         self.linear_prepare_input.load_state_dict(checkpoint['linear_prepare_input'])
         self.decoder.load_state_dict(checkpoint['decoder'])
         self.projector.load_state_dict(checkpoint['projector'])
