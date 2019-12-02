@@ -17,6 +17,7 @@ parser.add_argument('--trainset_path', dest='trainset_path', default='data/raw/t
 parser.add_argument('--validset_path', dest='validset_path', default='data/raw/validset.txt', type=str, help='验证集位置')
 parser.add_argument('--testset_path', dest='testset_path', default='data/raw/testset.txt', type=str, help='测试集位置')
 parser.add_argument('--embed_path', dest='embed_path', default='data/embed.txt', type=str, help='词向量位置')
+parser.add_argument('--vad_path', dest='vad_path', default='data/vad.txt', type=str, help='vad位置')
 parser.add_argument('--result_path', dest='result_path', default='result', type=str, help='测试结果位置')
 parser.add_argument('--print_per_step', dest='print_per_step', default=100, type=int, help='每更新多少次参数summary学习情况')
 parser.add_argument('--log_per_step', dest='log_per_step', default=30000, type=int, help='每更新多少次参数保存模型')
@@ -69,6 +70,18 @@ def main():
             embeds.append(embed)
     print('载入词汇表: %d个' % len(vocab))
     print('词向量维度: %d' % config.embedding_size)
+
+    # 载入vad字典
+    vads = []
+    with open(args.vad_path, 'r', encoding='utf8') as fr:
+        for line in fr:
+            line = line.strip()
+            vad = line[line.find(' ') + 1:].split()
+            vad = [float(item) for item in vad]
+            assert len(vad) == config.affect_embedding_size
+            vads.append(vad)
+    print('载入vad字典: %d个' % len(vads))
+    print('vad维度: %d' % config.affect_embedding_size)
 
     # 通过词汇表构建一个word2index和index2word的工具
     sentence_processor = SentenceProcessor(vocab, config.pad_id, config.start_id, config.end_id, config.unk_id)

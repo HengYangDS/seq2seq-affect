@@ -34,7 +34,7 @@ class Config(object):
     attention_size = 100
 
     # 优化参数
-    batch_size = 64
+    batch_size = 32
     method = 'adam'  # in ['sgd', 'adam']
     lr = 0.0001  # 初始学习率
     lr_decay = 1.0  # 学习率衰减，每过1个epoch衰减的百分比
