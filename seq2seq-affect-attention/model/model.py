@@ -50,7 +50,7 @@ class Model(nn.Module):
                                           config.encoder_decoder_output_size + config.affect_encoder_output_size,
                                           config.encoder_decoder_output_size)
 
-        self.linear_prepare_input = nn.Linear(config.embedding_size+config.affect_encoder_output_size,
+        self.linear_prepare_input = nn.Linear(config.embedding_size+config.affect_encoder_output_size+config.attention_size,
                                               config.decoder_input_size)
 
         # 解码器

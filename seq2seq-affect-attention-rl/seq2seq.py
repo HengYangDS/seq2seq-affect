@@ -22,6 +22,7 @@ parser.add_argument('--print_per_step', dest='print_per_step', default=100, type
 parser.add_argument('--log_per_step', dest='log_per_step', default=30000, type=int, help='每更新多少次参数保存模型')
 parser.add_argument('--log_path', dest='log_path', default='log', type=str, help='记录模型位置')
 parser.add_argument('--inference', dest='inference', default=False, type=bool, help='是否测试')  #
+parser.add_argument('--reinforce', dest='reinforce', default=False, type=bool, help='是否强化')  #
 parser.add_argument('--max_len', dest='max_len', default=60, type=int, help='测试时最大解码步数')
 parser.add_argument('--model_path', dest='model_path', default='log//', type=str, help='载入模型位置')  #
 parser.add_argument('--seed', dest='seed', default=666, type=int, help='随机种子')  #
@@ -127,7 +128,10 @@ def main():
                 rl_loss, nll_loss, reward, ppl = train(model, feed_data)
 
                 optim.optimizer.zero_grad()  # 清空梯度
-                rl_loss.mean().backward()  # 反向传播
+                if args.reinforce:
+                    rl_loss.mean().backward()  # 反向传播
+                else:
+                    nll_loss.mean().backward()
                 optim.step()  # 更新参数
 
                 use_time = time.time() - start_time
@@ -136,7 +140,7 @@ def main():
 
                 # summary当前情况
                 if global_step % args.print_per_step == 0:
-                    print('epoch: %d, global_step: %d, lr: %g, rl_loss:%.2f, nll_loss: %.2f, reward: %.2f, ppl: %.2f,'
+                    print('epoch: %d, global_step: %d, lr: %g, rl_loss:%.2f, nll_loss: %.2f, reward: %g, ppl: %.2f,'
                           ' time: %.2fs'
                           % (epoch, global_step, optim.lr, rl_loss.mean().item(), nll_loss.mean().item(),
                              reward.mean().item(), ppl.mean().exp().item(), use_time))
