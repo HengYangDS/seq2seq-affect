@@ -104,6 +104,7 @@ def main():
         return
     else:  # 如果载入模型的位置不存在，重新开始训练，则载入预训练的词向量
         model.embedding.embedding.weight = torch.nn.Parameter(torch.FloatTensor(embeds))
+        model.affect_embedding.embedding.weight = torch.nn.Parameter(torch.FloatTensor(vads))
         model.affect_embedding.embedding.weight.requires_grad = False
         print('初始化模型完成')
         # 记录模型的文件夹
