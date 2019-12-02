@@ -303,10 +303,10 @@ def comput_loss(outputs, labels, masks):
     result_affect_a = result_affect[:, 1]
     result_affect_d = result_affect[:, 2]
 
-    reward_v = 1 / (1 + ((post_affect_v - result_affect_v) ** 2).sqrt())  # [0, 10]
-    reward_a = ((post_affect_a - result_affect_a) ** 2).sqrt()
+    reward_v = 1 / (1 + (post_affect_v - result_affect_v).abs())  # [0, 10]
+    reward_a = (post_affect_a - result_affect_a).abs()
     reward_a = (reward_a-reward_a.min()) / (reward_a.max()-reward_a.min())
-    reward_d = ((post_affect_d - result_affect_d) ** 2).sqrt()
+    reward_d = (post_affect_d - result_affect_d).abs()
     reward_d = (reward_d-reward_d.min()) / (reward_d.max() - reward_d.min())
 
     reward = reward_v + reward_a + reward_d  # [batch]
