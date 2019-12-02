@@ -156,6 +156,7 @@ def main():
                     summary_writer.add_scalar('valid_nll', nll_loss, global_step)
                     summary_writer.add_scalar('valid_ppl', np.exp(ppl), global_step)
                     summary_writer.flush()  # 将缓冲区写入文件
+                    torch.cuda.empty_cache()
 
             epoch += 1  # 数据集迭代次数+1
             optim.update_lr(epoch)  # 调整学习率
