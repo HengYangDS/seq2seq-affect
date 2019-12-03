@@ -68,65 +68,120 @@ class Model(nn.Module):
 
     def forward(self, input,
                 inference=False,  # 是否测试
+                reinforce=False,
                 max_len=60):  # 解码的最大长度
 
         if not inference:  # 训练
+            if not reinforce:
+                id_posts = input['posts']  # [batch, seq]
+                len_posts = input['len_posts']  # [batch]
+                id_responses = input['responses']  # [batch, seq]
+                batch_size = id_posts.size()[0]
+                device = id_posts.device.type
 
-            id_posts = input['posts']  # [batch, seq]
-            len_posts = input['len_posts']  # [batch]
-            id_responses = input['responses']  # [batch, seq]
-            batch_size = id_posts.size()[0]
-            device = id_posts.device.type
+                embed_posts = self.embedding(id_posts)  # [batch, seq, embed_size]
+                embed_responses = self.embedding(id_responses)  # [batch, seq, embed_size]
+                affect_posts = self.affect_embedding(id_posts)
 
-            embed_posts = self.embedding(id_posts)  # [batch, seq, embed_size]
-            embed_responses = self.embedding(id_responses)  # [batch, seq, embed_size]
-            affect_posts = self.affect_embedding(id_posts)
+                # 解码器的输入为回复去掉end_id
+                decoder_input = embed_responses[:, :-1, :].transpose(0, 1)  # [seq-1, batch, embed_size]
+                len_decoder = decoder_input.size()[0]  # 解码长度 seq-1
+                decoder_input = decoder_input.split([1] * len_decoder, 0)  # 解码器每一步的输入 seq-1个[1, batch, embed_size]
 
-            # 解码器的输入为回复去掉end_id
-            decoder_input = embed_responses[:, :-1, :].transpose(0, 1)  # [seq-1, batch, embed_size]
-            len_decoder = decoder_input.size()[0]  # 解码长度 seq-1
-            decoder_input = decoder_input.split([1] * len_decoder, 0)  # 解码器每一步的输入 seq-1个[1, batch, embed_size]
+                # state: [layers, batch, dim]
+                _, state_encoder = self.encoder(embed_posts.transpose(0, 1), len_posts)
+                # output_affect: [seq, batch, dim]
+                output_affect, state_affect_encoder = self.affect_encoder(affect_posts.transpose(0, 1), len_posts)
+                context_affect = output_affect[-1, :, :].unsqueeze(0)  # [1, batch, dim]
 
-            # state: [layers, batch, dim]
-            _, state_encoder = self.encoder(embed_posts.transpose(0, 1), len_posts)
-            # output_affect: [seq, batch, dim]
-            output_affect, state_affect_encoder = self.affect_encoder(affect_posts.transpose(0, 1), len_posts)
-            context_affect = output_affect[-1, :, :].unsqueeze(0)  # [1, batch, dim]
+                outputs = []
+                weights = []
 
-            outputs = []
-            weights = []
+                init_attn = torch.zeros([1, batch_size, self.config.attention_size])
+                if device == 'cuda':
+                    init_attn = init_attn.cuda()
 
-            init_attn = torch.zeros([1, batch_size, self.config.attention_size])
-            if device == 'cuda':
-                init_attn = init_attn.cuda()
+                for idx in range(len_decoder):
+                    if idx == 0:
+                        state = self.prepare_state(state_encoder, state_affect_encoder)  # 解码器初始状态
+                        input = torch.cat([decoder_input[idx], context_affect, init_attn], 2)  # 当前时间步输入 [1, batch, embed_size]
+                    else:
+                        input = torch.cat([decoder_input[idx], context_affect, attn.transpose(0, 1)], 2)  # 当前时间步输入 [1, batch, embed_size]
 
-            for idx in range(len_decoder):
-                if idx == 0:
-                    state = self.prepare_state(state_encoder, state_affect_encoder)  # 解码器初始状态
-                    input = torch.cat([decoder_input[idx], context_affect, init_attn], 2)  # 当前时间步输入 [1, batch, embed_size]
-                else:
-                    input = torch.cat([decoder_input[idx], context_affect, attn.transpose(0, 1)], 2)  # 当前时间步输入 [1, batch, embed_size]
+                    input = self.linear_prepare_input(input)
 
-                input = self.linear_prepare_input(input)
+                    # output: [1, batch, dim_out]
+                    # state: [num_layer, batch, dim_out]
+                    output, state = self.decoder(input, state)
+                    # attn: [batch, 1, attention_size]
+                    # weights: [batch, 1, encoder_len]
+                    attn, weight = self.attention(output.transpose(0, 1), output_affect.transpose(0, 1))
+                    outputs.append(torch.cat([output, attn.transpose(0, 1)], 2))
+                    weights.append(weight)
 
-                # output: [1, batch, dim_out]
-                # state: [num_layer, batch, dim_out]
-                output, state = self.decoder(input, state)
-                # attn: [batch, 1, attention_size]
-                # weights: [batch, 1, encoder_len]
-                attn, weight = self.attention(output.transpose(0, 1), output_affect.transpose(0, 1))
-                outputs.append(torch.cat([output, attn.transpose(0, 1)], 2))
-                weights.append(weight)
+                outputs = torch.cat(outputs, 0).transpose(0, 1)  # [batch, seq-1, dim_out]
+                weights = torch.cat(weights, 1)  # [batch, seq-1, dim_out]
 
-            outputs = torch.cat(outputs, 0).transpose(0, 1)  # [batch, seq-1, dim_out]
-            weights = torch.cat(weights, 1)  # [batch, seq-1, dim_out]
+                output_vocab = self.projector(outputs)  # [batch, seq-1, num_vocab]
 
-            output_vocab = self.projector(outputs)  # [batch, seq-1, num_vocab]
+                return output_vocab, weights
 
-            return output_vocab, weights
+            else:  # rl
+                id_posts = input['posts']  # [batch, seq]
+                len_posts = input['len_posts']  # [batch]
+                id_responses = input['responses']  # [batch, seq]
+                batch_size = id_posts.size()[0]
+                device = id_posts.device.type
+                len_decoder = id_responses.size()[0] - 1  # 解码长度 seq-1
+
+                embed_posts = self.embedding(id_posts)  # [batch, seq, embed_size]
+                affect_posts = self.affect_embedding(id_posts)
+
+                # state: [layers, batch, dim]
+                _, state_encoder = self.encoder(embed_posts.transpose(0, 1), len_posts)
+                # output_affect: [seq, batch, dim]
+                output_affect, state_affect_encoder = self.affect_encoder(affect_posts.transpose(0, 1), len_posts)
+                context_affect = output_affect[-1, :, :].unsqueeze(0)  # [1, batch, dim]
+
+                outputs = []
+                weights = []
+
+                first_input_id = (torch.ones((1, batch_size)) * self.config.start_id).long()
+                init_attn = torch.zeros([1, batch_size, self.config.attention_size])
+                if device == 'cuda':
+                    first_input_id = first_input_id.cuda()
+                    init_attn = init_attn.cuda()
+
+                for idx in range(len_decoder):
+                    if idx == 0:
+                        state = self.prepare_state(state_encoder, state_affect_encoder)  # 解码器初始状态
+                        input = torch.cat([self.embedding(first_input_id), context_affect, init_attn],
+                                          2)  # 当前时间步输入 [1, batch, embed_size]
+                    else:
+                        vocab_prob = self.projector(torch.cat([output, attn.transpose(0, 1)], 2))
+                        next_input_id = torch.argmax(vocab_prob, 2)  # 选择概率最大的词作为下个时间步的输入 [1, batch]
+                        input = torch.cat([self.embedding(next_input_id), context_affect, attn.transpose(0, 1)],
+                                          2)  # 当前时间步输入 [1, batch, embed_size]
+
+                    input = self.linear_prepare_input(input)
+
+                    # output: [1, batch, dim_out]
+                    # state: [num_layer, batch, dim_out]
+                    output, state = self.decoder(input, state)
+                    # attn: [batch, 1, attention_size]
+                    # weights: [batch, 1, encoder_len]
+                    attn, weight = self.attention(output.transpose(0, 1), output_affect.transpose(0, 1))
+                    outputs.append(torch.cat([output, attn.transpose(0, 1)], 2))
+                    weights.append(weight)
+
+                outputs = torch.cat(outputs, 0).transpose(0, 1)  # [batch, seq-1, dim_out]
+                weights = torch.cat(weights, 1)  # [batch, seq-1, dim_out]
+
+                output_vocab = self.projector(outputs)  # [batch, seq-1, num_vocab]
+
+                return output_vocab, weights
 
         else:  # 测试
-
             id_posts = input['posts']  # [batch, seq]
             len_posts = input['len_posts']  # [batch]
             batch_size = id_posts.size()[0]
@@ -230,7 +285,7 @@ class Model(nn.Module):
     def load_model(self, path):
 
         checkpoint = torch.load(path)
-        self.affect_embedding.load_state_dict(checkpoint['embedding'])
+        self.affect_embedding.load_state_dict(checkpoint['affect_embedding'])
         self.embedding.load_state_dict(checkpoint['embedding'])
         self.encoder.load_state_dict(checkpoint['encoder'])
         self.affect_encoder.load_state_dict(checkpoint['affect_encoder'])
