@@ -230,7 +230,7 @@ class Model(nn.Module):
     def load_model(self, path):
 
         checkpoint = torch.load(path)
-        self.affect_embedding.load_state_dict(checkpoint['embedding'])
+        self.affect_embedding.load_state_dict(checkpoint['affect_embedding'])
         self.embedding.load_state_dict(checkpoint['embedding'])
         self.encoder.load_state_dict(checkpoint['encoder'])
         self.affect_encoder.load_state_dict(checkpoint['affect_encoder'])
