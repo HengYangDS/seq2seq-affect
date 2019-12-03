@@ -24,6 +24,7 @@ parser.add_argument('--log_per_step', dest='log_per_step', default=30000, type=i
 parser.add_argument('--log_path', dest='log_path', default='log', type=str, help='记录模型位置')
 parser.add_argument('--inference', dest='inference', default=False, type=bool, help='是否测试')  #
 parser.add_argument('--reinforce', dest='reinforce', default=True, type=bool, help='是否强化')  #
+parser.add_argument('--use_true', dest='use_true', default=False, type=bool, help='是否使用真实回复')  #
 parser.add_argument('--max_len', dest='max_len', default=60, type=int, help='测试时最大解码步数')
 parser.add_argument('--model_path', dest='model_path', default='log/run1575272273/003000000361512.model', type=str, help='载入模型位置')  #
 parser.add_argument('--seed', dest='seed', default=666, type=int, help='随机种子')  #
@@ -293,25 +294,26 @@ def comput_loss(outputs, labels, masks):
 
     ppl = nll_loss / token_per_batch.clamp_min(1e-12)  # ppl的计算需要平均到每个有效的token上 [batch]
 
-    post_affect = labels_affect.sum(1)  # [batch, 3]
-    post_affect_v = post_affect[:, 0]  # batch
-    post_affect_a = post_affect[:, 1]
-    post_affect_d = post_affect[:, 2]
+    with torch.no_grad():
+        post_affect = labels_affect.sum(1)  # [batch, 3]
+        post_affect_v = post_affect[:, 0]  # batch
+        post_affect_a = post_affect[:, 1]
+        post_affect_d = post_affect[:, 2]
 
-    result_affect = output_affect.sum(1)  # [batch, 3]
-    result_affect_v = result_affect[:, 0]
-    result_affect_a = result_affect[:, 1]
-    result_affect_d = result_affect[:, 2]
+        result_affect = output_affect.sum(1)  # [batch, 3]
+        result_affect_v = result_affect[:, 0]
+        result_affect_a = result_affect[:, 1]
+        result_affect_d = result_affect[:, 2]
 
-    reward_v = 1 / (1 + (post_affect_v - result_affect_v).abs())  # [0, 10]
-    reward_a = (post_affect_a - result_affect_a).abs()
-    reward_a = (reward_a-reward_a.min()) / (reward_a.max()-reward_a.min())
-    reward_d = (post_affect_d - result_affect_d).abs()
-    reward_d = (reward_d-reward_d.min()) / (reward_d.max() - reward_d.min())
+        reward_v = 1 / (1 + (post_affect_v - result_affect_v).abs())  # [0, 10]
+        reward_a = (post_affect_a - result_affect_a).abs()
+        reward_a = (reward_a-reward_a.min()) / (reward_a.max()-reward_a.min())
+        reward_d = (post_affect_d - result_affect_d).abs()
+        reward_d = (reward_d-reward_d.min()) / (reward_d.max() - reward_d.min())
 
-    _reward = reward_v + reward_a + reward_d  # [batch]
-    baseline_reward = _reward.mean()
-    reward = _reward - baseline_reward
+        _reward = reward_v + reward_a + reward_d  # [batch]
+        baseline_reward = _reward.mean()
+        reward = _reward - baseline_reward
 
     rl_loss = nll_loss+nll_loss*reward
 
@@ -319,11 +321,12 @@ def comput_loss(outputs, labels, masks):
 
 
 def train(model, feed_data):
-    output_vocab, weights = model(feed_data, reinforce=args.reinforce)  # 前向传播
-    output_affect = model.affect_embedding(output_vocab.argmax(2))
+    output_vocab, weights = model(feed_data, use_true=args.use_true)  # 前向传播
+    with torch.no_grad():
+        output_affect = model.affect_embedding(output_vocab.argmax(2))
+        labels_affect = model.affect_embedding(feed_data['posts'][:, 1:])
     outputs = (output_vocab, output_affect)
     labels_word = feed_data['responses'][:, 1:]  # 去掉start_id
-    labels_affect = model.affect_embedding(feed_data['posts'][:, 1:])
     labels = (labels_word, labels_affect)
     masks = feed_data['masks']
     rl_loss, nll_loss, reward, ppl = comput_loss(outputs, labels, masks)  # 计算损失
@@ -337,12 +340,12 @@ def valid(model, data_processor):
     for data in data_processor.get_batch_data():
 
         feed_data = prepare_feed_data(data)
-        output_vocab, weights = model(feed_data, reinforce=args.reinforce)  # 前向传播
-        output_affect = model.affect_embedding(output_vocab.argmax(2))
+        output_vocab, weights = model(feed_data, use_true=args.use_true)  # 前向传播
+        with torch.no_grad():
+            output_affect = model.affect_embedding(output_vocab.argmax(2))
+            labels_affect = model.affect_embedding(feed_data['posts'][:, 1:])
         outputs = (output_vocab, output_affect)
-
         labels_word = feed_data['responses'][:, 1:]  # 去掉start_id
-        labels_affect = model.affect_embedding(feed_data['posts'][:, 1:])
         labels = (labels_word, labels_affect)
         masks = feed_data['masks']
 

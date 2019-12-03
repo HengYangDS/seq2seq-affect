@@ -68,11 +68,11 @@ class Model(nn.Module):
 
     def forward(self, input,
                 inference=False,  # 是否测试
-                reinforce=False,
+                use_true=False,
                 max_len=60):  # 解码的最大长度
 
         if not inference:  # 训练
-            if not reinforce:
+            if use_true:
                 id_posts = input['posts']  # [batch, seq]
                 len_posts = input['len_posts']  # [batch]
                 id_responses = input['responses']  # [batch, seq]
