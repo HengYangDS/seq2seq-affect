@@ -319,7 +319,7 @@ def comput_loss(outputs, labels, masks):
 
 
 def train(model, feed_data):
-    output_vocab, weights = model(feed_data)  # 前向传播
+    output_vocab, weights = model(feed_data, reinforce=args.reinforce)  # 前向传播
     output_affect = model.affect_embedding(output_vocab.argmax(2))
     outputs = (output_vocab, output_affect)
     labels_word = feed_data['responses'][:, 1:]  # 去掉start_id
@@ -337,7 +337,7 @@ def valid(model, data_processor):
     for data in data_processor.get_batch_data():
 
         feed_data = prepare_feed_data(data)
-        output_vocab, weights = model(feed_data)  # 前向传播
+        output_vocab, weights = model(feed_data, reinforce=args.reinforce)  # 前向传播
         output_affect = model.affect_embedding(output_vocab.argmax(2))
         outputs = (output_vocab, output_affect)
 

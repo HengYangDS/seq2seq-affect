@@ -132,7 +132,7 @@ class Model(nn.Module):
                 id_responses = input['responses']  # [batch, seq]
                 batch_size = id_posts.size()[0]
                 device = id_posts.device.type
-                len_decoder = id_responses.size()[0] - 1  # 解码长度 seq-1
+                len_decoder = id_responses.size()[1] - 1  # 解码长度 seq-1
 
                 embed_posts = self.embedding(id_posts)  # [batch, seq, embed_size]
                 affect_posts = self.affect_embedding(id_posts)
