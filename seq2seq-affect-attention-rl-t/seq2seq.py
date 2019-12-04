@@ -315,7 +315,7 @@ def comput_loss(outputs, labels, masks):
         baseline_reward = _reward.mean()
         reward = _reward - baseline_reward
 
-    rl_loss = nll_loss+nll_loss*reward
+    rl_loss = nll_loss+1.5*nll_loss*reward
 
     return rl_loss, nll_loss, _reward, ppl
 
