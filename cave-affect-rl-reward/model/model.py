@@ -16,6 +16,11 @@ class Model(nn.Module):
 
         self.config = config
 
+        # 情感嵌入层
+        self.affect_embedding = AffectEmbedding(config.num_vocab,
+                                                config.affect_embedding_size,
+                                                config.pad_id)
+
         # 定义嵌入层
         self.embedding = WordEmbedding(config.num_vocab,  # 词汇表大小
                                        config.embedding_size,  # 嵌入层维度
@@ -248,7 +253,8 @@ class Model(nn.Module):
     # 保存模型
     def save_model(self, epoch, global_step, path):
 
-        torch.save({'embedding': self.embedding.state_dict(),
+        torch.save({'affect_embedding': self.affect_embedding.state_dict(),
+                    'embedding': self.embedding.state_dict(),
                     'post_encoder': self.post_encoder.state_dict(),
                     'response_encoder': self.response_encoder.state_dict(),
                     'prior_net': self.prior_net.state_dict(),
@@ -263,6 +269,7 @@ class Model(nn.Module):
     def load_model(self, path):
 
         checkpoint = torch.load(path)
+        self.affect_embedding.load_state_dict(checkpoint['affect_embedding'])
         self.embedding.load_state_dict(checkpoint['embedding'])
         self.post_encoder.load_state_dict(checkpoint['post_encoder'])
         self.response_encoder.load_state_dict(checkpoint['response_encoder'])

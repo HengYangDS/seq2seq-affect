@@ -301,6 +301,7 @@ def comput_loss(outputs, labels, masks, global_step):
     labels_word, labels_affect = labels
 
     token_per_batch = masks.sum(1)  # 每个样本要计算损失的token数 [batch]
+    batch_size = masks.size()[0]
     len_decoder = masks.size()[1]  # 解码长度
 
     output_vocab = output_vocab.reshape(-1, config.num_vocab)  # [batch*len_decoder, num_vocab]
@@ -326,12 +327,18 @@ def comput_loss(outputs, labels, masks, global_step):
     loss = nll_loss + kld_weight * kld_loss
 
     with torch.no_grad():
-        post_affect = labels_affect.sum(1)  # [batch, 3]
+        neutral_vec = torch.FloatTensor([0.5, 0.5, 0.5]).unsqueeze(0).unsqueeze(1).repeat(batch_size, len_decoder, 1)
+        if args.gpu:
+            neutral_vec = neutral_vec.cuda()
+        affect_mask = 1 - (labels_affect == neutral_vec).prod(2)  # [batch_size, len_decoder]
+        post_affect = (labels_affect * affect_mask).sum(1)
+        affect_mask = 1 - (output_affect == neutral_vec).prod(2)  # [batch_size, len_decoder]
+        result_affect = (output_affect * affect_mask).sum(1)
+
         post_affect_v = post_affect[:, 0]  # batch
         post_affect_a = post_affect[:, 1]
         post_affect_d = post_affect[:, 2]
 
-        result_affect = output_affect.sum(1)  # [batch, 3]
         result_affect_v = result_affect[:, 0]
         result_affect_a = result_affect[:, 1]
         result_affect_d = result_affect[:, 2]
