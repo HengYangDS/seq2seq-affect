@@ -214,7 +214,7 @@ def main():
         model.eval()  # 切换到测试模式，会停用dropout等等
 
         rl_loss, nll_loss, reward, ppl = valid(model, dp_test)
-        print('在验证集上的rl损失为: %g, nll损失为: %g, 奖励为: %g, 困惑度为: %g'
+        print('在测试集上的rl损失为: %g, nll损失为: %g, 奖励为: %g, 困惑度为: %g'
               % (rl_loss, nll_loss, reward, np.exp(ppl)))
 
         len_results = []  # 统计生成结果的总长度
