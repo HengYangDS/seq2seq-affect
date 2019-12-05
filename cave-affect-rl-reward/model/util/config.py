@@ -14,6 +14,7 @@ class Config(object):
     num_vocab = 39000
 
     # 嵌入层参数，如果载入预训练的词向量，就由词向量的维度决定
+    affect_embedding_size = 3
     embedding_size = 300
 
     # post编码器参数

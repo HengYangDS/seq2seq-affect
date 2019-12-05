@@ -130,7 +130,7 @@ class Model(nn.Module):
                 id_responses = input['responses']  # [batch, seq]
                 len_responses = input['len_responses']  # [batch]
                 sampled_latents = input['sampled_latents']  # [batch, latent_size]
-                len_decoder = id_responses.size()[1]
+                len_decoder = id_responses.size()[1] - 1
                 batch_size = id_posts.size()[0]
                 device = id_posts.device.type
 

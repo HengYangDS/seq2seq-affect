@@ -22,11 +22,11 @@ parser.add_argument('--result_path', dest='result_path', default='result', type=
 parser.add_argument('--print_per_step', dest='print_per_step', default=100, type=int, help='每更新多少次参数summary学习情况')
 parser.add_argument('--log_per_step', dest='log_per_step', default=30000, type=int, help='每更新多少次参数保存模型')
 parser.add_argument('--log_path', dest='log_path', default='log', type=str, help='记录模型位置')
-parser.add_argument('--inference', dest='inference', default=True, type=bool, help='是否测试')  #
-parser.add_argument('--reinforce', dest='reinforce', default=True, type=bool, help='是否强化')  #
+parser.add_argument('--inference', dest='inference', default=False, type=bool, help='是否测试')  #
+parser.add_argument('--reinforce', dest='reinforce', default=False, type=bool, help='是否强化')  #
 parser.add_argument('--use_true', dest='use_true', default=True, type=bool, help='是否使用真实回复')  #
 parser.add_argument('--max_len', dest='max_len', default=60, type=int, help='测试时最大解码步数')
-parser.add_argument('--model_path', dest='model_path', default='log/run1570549901/017000001891000.model', type=str, help='载入模型位置')  #
+parser.add_argument('--model_path', dest='model_path', default='log//', type=str, help='载入模型位置')  #
 parser.add_argument('--seed', dest='seed', default=666, type=int, help='随机种子')  #
 parser.add_argument('--gpu', dest='gpu', default=True, type=bool, help='是否使用gpu')  #
 parser.add_argument('--max_epoch', dest='max_epoch', default=20, type=int, help='最大训练epoch')
@@ -327,13 +327,17 @@ def comput_loss(outputs, labels, masks, global_step):
     loss = nll_loss + kld_weight * kld_loss
 
     with torch.no_grad():
-        neutral_vec = torch.FloatTensor([0.5, 0.5, 0.5]).unsqueeze(0).unsqueeze(1).repeat(batch_size, len_decoder, 1)
+        neutral_vec_label = torch.FloatTensor([0.5, 0.5, 0.5]).unsqueeze(0).unsqueeze(1).\
+            repeat(batch_size, labels_affect.size()[1], 1)
+        neutral_vec_output = torch.FloatTensor([0.5, 0.5, 0.5]).unsqueeze(0).unsqueeze(1).\
+            repeat(batch_size, output_affect.size()[1], 1)
         if args.gpu:
-            neutral_vec = neutral_vec.cuda()
-        affect_mask = 1 - (labels_affect == neutral_vec).prod(2)  # [batch_size, len_decoder]
-        post_affect = (labels_affect * affect_mask).sum(1)
-        affect_mask = 1 - (output_affect == neutral_vec).prod(2)  # [batch_size, len_decoder]
-        result_affect = (output_affect * affect_mask).sum(1)
+            neutral_vec_label = neutral_vec_label.cuda()
+            neutral_vec_output = neutral_vec_output.cuda()
+        affect_mask = 1 - (labels_affect == neutral_vec_label).prod(2)
+        post_affect = (labels_affect * affect_mask.unsqueeze(2)).sum(1)
+        affect_mask = 1 - (output_affect == neutral_vec_output).prod(2)  # [batch_size, len_decoder]
+        result_affect = (output_affect * affect_mask.unsqueeze(2)).sum(1)
 
         post_affect_v = post_affect[:, 0]  # batch
         post_affect_a = post_affect[:, 1]
@@ -353,7 +357,7 @@ def comput_loss(outputs, labels, masks, global_step):
         baseline_reward = _reward.mean()
         reward = _reward - baseline_reward
 
-    rl_loss = loss + 1.5*nll_loss*reward
+    rl_loss = loss + 1.0*nll_loss*reward
 
     return rl_loss, _reward, loss, nll_loss, kld_loss, ppl, kld_weight
 
@@ -367,8 +371,8 @@ def train(model, feed_data, global_step):
     labels_word = feed_data['responses'][:, 1:]  # 去掉start_id
     labels = (labels_word, labels_affect)
     masks = feed_data['masks']
-    loss, nll_loss, kld_loss, ppl, kld_weight = comput_loss(outputs, labels, masks, global_step)  # 计算损失
-    return loss, nll_loss, kld_loss, ppl, kld_weight
+    rl_loss, _reward, loss, nll_loss, kld_loss, ppl, kld_weight = comput_loss(outputs, labels, masks, global_step)  # 计算损失
+    return rl_loss, _reward, loss, nll_loss, kld_loss, ppl, kld_weight
 
 
 def valid(model, data_processor, global_step):

@@ -306,6 +306,7 @@ def comput_loss(outputs, labels, masks, global_step):
     output_vocab = output_vocab.reshape(-1, config.num_vocab)  # [batch*len_decoder, num_vocab]
     labels_word = labels_word.reshape(-1)  # [batch*len_decoder]
     masks = masks.reshape(-1)  # [batch*len_decoder]
+    batch_size = len(masks)
 
     # nll_loss需要自己求log，它只是把label指定下标的损失取负并拿出来，reduction='none'代表只是拿出来，而不需要求和或者求均值
     _nll_loss = F.nll_loss((output_vocab + 1e-12).log(), labels_word, reduction='none')  # 每个token的-log似然 [batch*len_decoder]
@@ -326,27 +327,37 @@ def comput_loss(outputs, labels, masks, global_step):
     loss = nll_loss + kld_weight * kld_loss
 
     with torch.no_grad():
-        post_affect = labels_affect.sum(1)  # [batch, 3]
+        neutral_vec_label = torch.FloatTensor([0.5, 0.5, 0.5]).unsqueeze(0).unsqueeze(1). \
+            repeat(batch_size, labels_affect.size()[1], 1)
+        neutral_vec_output = torch.FloatTensor([0.5, 0.5, 0.5]).unsqueeze(0).unsqueeze(1). \
+            repeat(batch_size, output_affect.size()[1], 1)
+        if args.gpu:
+            neutral_vec_label = neutral_vec_label.cuda()
+            neutral_vec_output = neutral_vec_output.cuda()
+        affect_mask = 1 - (labels_affect == neutral_vec_label).prod(2)
+        post_affect = (labels_affect * affect_mask.unsqueeze(2)).sum(1)
+        affect_mask = 1 - (output_affect == neutral_vec_output).prod(2)  # [batch_size, len_decoder]
+        result_affect = (output_affect * affect_mask.unsqueeze(2)).sum(1)
+
         post_affect_v = post_affect[:, 0]  # batch
         post_affect_a = post_affect[:, 1]
         post_affect_d = post_affect[:, 2]
 
-        result_affect = output_affect.sum(1)  # [batch, 3]
         result_affect_v = result_affect[:, 0]
         result_affect_a = result_affect[:, 1]
         result_affect_d = result_affect[:, 2]
 
         reward_v = 1 / (1 + (post_affect_v - result_affect_v).abs())  # [0, 10]
         reward_a = (post_affect_a - result_affect_a).abs()
-        reward_a = (reward_a-reward_a.min()) / (reward_a.max()-reward_a.min())
+        reward_a = (reward_a - reward_a.min()) / (reward_a.max() - reward_a.min())
         reward_d = (post_affect_d - result_affect_d).abs()
-        reward_d = (reward_d-reward_d.min()) / (reward_d.max() - reward_d.min())
+        reward_d = (reward_d - reward_d.min()) / (reward_d.max() - reward_d.min())
 
         _reward = reward_v + reward_a + reward_d  # [batch]
         baseline_reward = _reward.mean()
         reward = _reward - baseline_reward
 
-    rl_loss = loss + 1.5*nll_loss*reward
+    rl_loss = loss + 1.0*nll_loss*reward
 
     return rl_loss, _reward, loss, nll_loss, kld_loss, ppl, kld_weight
 
@@ -360,7 +371,7 @@ def train(model, feed_data, global_step):
     labels_word = feed_data['responses'][:, 1:]  # 去掉start_id
     labels = (labels_word, labels_affect)
     masks = feed_data['masks']
-    loss, nll_loss, kld_loss, ppl, kld_weight = comput_loss(outputs, labels, masks, global_step)  # 计算损失
+    rl_loss, _reward, loss, nll_loss, kld_loss, ppl, kld_weight = comput_loss(outputs, labels, masks, global_step)  # 计算损失
     return loss, nll_loss, kld_loss, ppl, kld_weight
 
 
